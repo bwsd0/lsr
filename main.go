@@ -1,30 +1,20 @@
 // lsr lists directories recursively
 //
+// For each directory argument, lsr recursively lists the directory's contents;
+// for each file argument, lsr repeats its name. Given no arguments, the current
+// directory is listed.
+//
 // Usage:
-//		lsr [-d | -f ] [ n ...]
 //
-// For each directory argument, lsr recursively lists the contents of the
-// directory; for each file argument, lsr repeats its name. When no argument is
-// given, the current directory is listed.
-//
-// Options:
-//		-d print directories
-//		-f print files
-//
-// TODO: print resolved, absolute paths instead. For example,
-// lsr -d ../ | xargs realpath
-//
-// Output:
-// /home/bwasd/go/src/github.com/bwasd/p9/cmd/fortune
-// /home/bwasd/go/src/github.com/bwasd/p9/cmd/2fa
-// /home/bwasd/go/src/github.com/bwasd/p9/cmd/lsr
-// ...
+//	lsr [-d] [-f] [name ...]
 package main
 
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"path"
 	"path/filepath"
 )
 
@@ -33,37 +23,38 @@ var (
 	flagF = flag.Bool("f", false, "print files")
 )
 
-var usageString = `usage: lsr [ -d | -f ] [name ...]
-	Options:`
+var usageString = `usage: lsr [-d] [-f] [name ...]
+options:
+`
 
 func usage() {
 	fmt.Fprint(os.Stderr, usageString)
 	flag.PrintDefaults()
-	os.Exit(1)
 }
 
-func prname(path string, f os.FileInfo) error {
-	if f.IsDir() && path[len(path)-1] != '/' {
+func prname(p string, f os.FileInfo) error {
+	if f.IsDir() && p[len(p)-1] != '/' {
 		if !*flagD {
 			return nil
 		}
-		path = path + "/"
+		p += "/"
 	} else if !*flagF {
 		return nil
 	}
-	fmt.Println(path)
+	fmt.Println(path.Clean(p))
 	return nil
 }
 
-func pr(path string, f os.FileInfo, err error) error {
+func pr(p string, f os.FileInfo, err error) error {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "lsr: %s", err)
+		fmt.Fprintln(os.Stderr, err)
 		return nil
 	}
-	return prname(path, f)
+	return prname(p, f)
 }
 
 func main() {
+	log.SetPrefix("lsr: ")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -72,11 +63,14 @@ func main() {
 	}
 
 	if flag.NArg() == 0 {
-		filepath.Walk(".", pr)
-		return
+		if err := filepath.Walk(".", pr); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
 	}
 
-	for _, v := range flag.Args() {
-		filepath.Walk(v, pr)
+	for i := range flag.Args() {
+		if err := filepath.Walk(flag.Arg(i), pr); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
 	}
 }
